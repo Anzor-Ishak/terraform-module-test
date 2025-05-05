@@ -1,4 +1,0 @@
-module "pet" {
-  source = "../../"
-}
-#test

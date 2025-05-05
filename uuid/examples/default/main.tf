@@ -1,3 +1,0 @@
-module "uuid" {
-  source = "../../"
-}
