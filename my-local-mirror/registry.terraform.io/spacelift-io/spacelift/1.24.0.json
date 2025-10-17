@@ -1,0 +1,10 @@
+{
+  "archives": {
+    "darwin_arm64": {
+      "hashes": [
+        "h1:N4iLwuqoLds1CrW87SbDZIS2wWhPe7d1uen55RCO5I8="
+      ],
+      "url": "terraform-provider-spacelift_1.24.0_darwin_arm64.zip"
+    }
+  }
+}
