@@ -7,3 +7,4 @@ module_version:  0.0.27
 terraform:
   after_plan:
     - terraform show -json spacelift.plan | jq -c '.configuration' > configuration.custom.spacelift.json
+    #test1
