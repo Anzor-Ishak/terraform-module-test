@@ -1,12 +1,55 @@
-# version defines the version of the config.yml configuration format. Currently the only option is 1.
+# # version defines the version of the config.yml configuration format. Currently the only option is 1.
+# version: 1
+
+# # module_version defines the version of the module to publish.
+# module_version:  0.0.27
+
+# stacks:
+#   consumermodule:              # <- stack ID (from the JSON you pasted)
+#     project_root: examples/consumers
+#     terraform_version: 1.5.7   # optional; just mirroring what you're using
+#     after_plan:
+#       - terraform show -json spacelift.plan | jq -c '.configuration' > configuration.custom.spacelift.json
+
 version: 1
 
-# module_version defines the version of the module to publish.
-module_version:  0.0.27
+# Existing module registry config
+module_version: 0.0.27
 
 stacks:
-  consumermodule:              # <- stack ID (from the JSON you pasted)
+  consumermodule:
     project_root: examples/consumers
-    terraform_version: 1.5.7   # optional; just mirroring what you're using
+    terraform_version: 1.5.7
     after_plan:
+      # 1) Export the Terraform configuration from the plan
       - terraform show -json spacelift.plan | jq -c '.configuration' > configuration.custom.spacelift.json
+
+      # 2) Inline shell to build module_versions.custom.spacelift.json
+      - |
+        set -euo pipefail
+
+        CONFIG_JSON="configuration.custom.spacelift.json"
+        OUT_JSON="module_versions.custom.spacelift.json"
+
+        # Start with an empty JSON object
+        echo '{}' > "$OUT_JSON"
+
+        # Get unique module sources from the root module
+        for SRC in $(jq -r '.root_module.module_calls[].source' "$CONFIG_JSON" | sort -u); do
+          # Expect sources like spacelift.io/org/name/provider
+          NS=$(echo "$SRC" | cut -d'/' -f2)
+          NAME=$(echo "$SRC" | cut -d'/' -f3)
+          PROVIDER=$(echo "$SRC" | cut -d'/' -f4)
+
+          # Call Spacelift module registry (Terraform module registry protocol)
+          # This uses the standard `/v1/modules/<namespace>/<name>/<provider>/versions` endpoint. 
+          RESP=$(curl -sS "https://spacelift.io/v1/modules/${NS}/${NAME}/${PROVIDER}/versions")
+
+          # Pick the highest SemVer as "latest"
+          LATEST=$(echo "$RESP" | jq -r '.modules[0].versions[].version' | sort -Vr | head -n1)
+
+          # Merge into the output map: { "<source>": "<latest>" }
+          tmp="$(mktemp)"
+          jq --arg src "$SRC" --arg ver "$LATEST" '. + {($src): $ver}' "$OUT_JSON" > "$tmp"
+          mv "$tmp" "$OUT_JSON"
+        done
