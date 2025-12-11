@@ -9,5 +9,5 @@ module "test" {
   source  = "spacelift.io/anzor-ishak/test/module"
 
   # 👇 Set this LOWER than 0.0.27 to see the warning from the policy
-  version = "0.0.20"
+  version = "0.0.21"
 }
