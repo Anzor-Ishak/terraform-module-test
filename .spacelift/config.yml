@@ -13,7 +13,6 @@
 
 version: 1
 
-# Existing module registry config
 module_version: 0.0.27
 
 stacks:
@@ -21,35 +20,58 @@ stacks:
     project_root: examples/consumers
     terraform_version: 1.5.7
     after_plan:
-      # 1) Export the Terraform configuration from the plan
       - terraform show -json spacelift.plan | jq -c '.configuration' > configuration.custom.spacelift.json
-
-      # 2) Inline shell to build module_versions.custom.spacelift.json
       - |
         set -euo pipefail
 
         CONFIG_JSON="configuration.custom.spacelift.json"
         OUT_JSON="module_versions.custom.spacelift.json"
 
-        # Start with an empty JSON object
+        # Base URL for your Spacelift account
+        ACCOUNT_BASE="https://anzor-ishak.app.spacelift.io"
+
+        # Optional auth header if SPACELIFT_API_TOKEN is set (recommended)
+        AUTH_ARGS=()
+        if [ -n "${SPACELIFT_API_TOKEN:-}" ]; then
+          AUTH_ARGS=(-H "Authorization: Bearer ${SPACELIFT_API_TOKEN}")
+        fi
+
         echo '{}' > "$OUT_JSON"
 
         # Get unique module sources from the root module
         for SRC in $(jq -r '.root_module.module_calls[].source' "$CONFIG_JSON" | sort -u); do
           # Expect sources like spacelift.io/org/name/provider
-          NS=$(echo "$SRC" | cut -d'/' -f2)
+          NS=$(echo "$SRC"   | cut -d'/' -f2)
           NAME=$(echo "$SRC" | cut -d'/' -f3)
           PROVIDER=$(echo "$SRC" | cut -d'/' -f4)
 
-          # Call Spacelift module registry (Terraform module registry protocol)
-          # This uses the standard `/v1/modules/<namespace>/<name>/<provider>/versions` endpoint. 
-          RESP=$(curl -sS "https://spacelift.io/v1/modules/${NS}/${NAME}/${PROVIDER}/versions")
+          # Only handle Spacelift registry modules
+          if [ -z "$NS" ] || [ -z "$NAME" ] || [ -z "$PROVIDER" ]; then
+            echo "Skipping non-registry module source: $SRC" >&2
+            continue
+          fi
 
-          # Pick the highest SemVer as "latest"
-          LATEST=$(echo "$RESP" | jq -r '.modules[0].versions[].version' | sort -Vr | head -n1)
+          URL="${ACCOUNT_BASE}/registry/modules/v1/${NS}/${NAME}/${PROVIDER}/versions"
+          echo "Querying latest version for ${SRC} -> ${URL}" >&2
 
-          # Merge into the output map: { "<source>": "<latest>" }
+          RESP=$(curl -sS "${AUTH_ARGS[@]}" "$URL" || true)
+
+          # Extract versions and pick latest
+          LATEST=$(echo "$RESP" \
+            | jq -r '.modules[0].versions[].version' \
+            | sort -Vr \
+            | head -n1)
+
+          # If we can't determine a latest version, skip this module
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "WARN: could not determine latest version for ${SRC}; response: $RESP" >&2
+            continue
+          fi
+
+          echo "Latest version for ${SRC} is ${LATEST}" >&2
+
           tmp="$(mktemp)"
           jq --arg src "$SRC" --arg ver "$LATEST" '. + {($src): $ver}' "$OUT_JSON" > "$tmp"
           mv "$tmp" "$OUT_JSON"
         done
+
