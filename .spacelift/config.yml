@@ -22,7 +22,8 @@ stacks:
     after_plan:
       - terraform show -json spacelift.plan | jq -c '.configuration' > configuration.custom.spacelift.json
       - |
-        set -euo pipefail
+        #!/bin/sh
+        set -eu
 
         CONFIG_JSON="configuration.custom.spacelift.json"
         OUT_JSON="module_versions.custom.spacelift.json"
@@ -31,21 +32,21 @@ stacks:
         ACCOUNT_BASE="https://anzor-ishak.app.spacelift.io"
 
         # Optional auth header if SPACELIFT_API_TOKEN is set (recommended)
-        AUTH_ARGS=()
+        AUTH_HEADER=""
         if [ -n "${SPACELIFT_API_TOKEN:-}" ]; then
-          AUTH_ARGS=(-H "Authorization: Bearer ${SPACELIFT_API_TOKEN}")
+          AUTH_HEADER="Authorization: Bearer ${SPACELIFT_API_TOKEN}"
         fi
 
         echo '{}' > "$OUT_JSON"
 
         # Get unique module sources from the root module
-        for SRC in $(jq -r '.root_module.module_calls[].source' "$CONFIG_JSON" | sort -u); do
+        jq -r '.root_module.module_calls[].source' "$CONFIG_JSON" | sort -u | while read -r SRC; do
           # Expect sources like spacelift.io/org/name/provider
-          NS=$(echo "$SRC"   | cut -d'/' -f2)
+          NS=$(echo "$SRC" | cut -d'/' -f2)
           NAME=$(echo "$SRC" | cut -d'/' -f3)
           PROVIDER=$(echo "$SRC" | cut -d'/' -f4)
 
-          # Only handle Spacelift registry modules
+          # Only handle registry-style modules
           if [ -z "$NS" ] || [ -z "$NAME" ] || [ -z "$PROVIDER" ]; then
             echo "Skipping non-registry module source: $SRC" >&2
             continue
@@ -54,7 +55,11 @@ stacks:
           URL="${ACCOUNT_BASE}/registry/modules/v1/${NS}/${NAME}/${PROVIDER}/versions"
           echo "Querying latest version for ${SRC} -> ${URL}" >&2
 
-          RESP=$(curl -sS "${AUTH_ARGS[@]}" "$URL" || true)
+          if [ -n "$AUTH_HEADER" ]; then
+            RESP=$(curl -sS -H "$AUTH_HEADER" "$URL" || true)
+          else
+            RESP=$(curl -sS "$URL" || true)
+          fi
 
           # Extract versions and pick latest
           LATEST=$(echo "$RESP" \
@@ -74,5 +79,6 @@ stacks:
           jq --arg src "$SRC" --arg ver "$LATEST" '. + {($src): $ver}' "$OUT_JSON" > "$tmp"
           mv "$tmp" "$OUT_JSON"
         done
+
 
 
