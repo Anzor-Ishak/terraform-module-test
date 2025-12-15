@@ -52,8 +52,9 @@ stacks:
             continue
           fi
 
-          URL="${ACCOUNT_BASE}/registry/modules/v1/${NS}/${NAME}/${PROVIDER}/versions"
+          URL="${ACCOUNT_BASE}/.registry/modules/v1/${NS}/${NAME}/${PROVIDER}/versions"
           echo "Querying latest version for ${SRC} -> ${URL}" >&2
+  
 
           if [ -n "$AUTH_HEADER" ]; then
             RESP=$(curl -sS -H "$AUTH_HEADER" "$URL" || true)
