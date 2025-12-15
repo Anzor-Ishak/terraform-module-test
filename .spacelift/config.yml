@@ -29,7 +29,7 @@ stacks:
         OUT_JSON="module_versions.custom.spacelift.json"
 
         # Base URL for your Spacelift account
-        ACCOUNT_BASE="https://anzor-ishak.app.spacelift.io"
+        MODULE_API_BASE="https://app.spacelift.io/registry/modules/v1"
 
         # Optional auth header if SPACELIFT_API_TOKEN is set (recommended)
         AUTH_HEADER=""
@@ -52,7 +52,7 @@ stacks:
             continue
           fi
 
-          URL="${ACCOUNT_BASE}/.registry/modules/v1/${NS}/${NAME}/${PROVIDER}/versions"
+          URL="${MODULE_API_BASE}/${NS}/${NAME}/${PROVIDER}/versions"
           echo "Querying latest version for ${SRC} -> ${URL}" >&2
   
 
