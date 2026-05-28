@@ -12,11 +12,10 @@
 #       - terraform show -json spacelift.plan | jq -c '.configuration' > configuration.custom.spacelift.json
 
 version: 1
+module_version: 0.0.31
 
-module_version: 0.0.30
-
-stacks:
-  consumermodule:
+tests:
+  - name: consumermodule
     project_root: examples/consumers
     terraform_version: 1.5.7
     after_plan:
@@ -24,62 +23,36 @@ stacks:
       - |
         #!/bin/sh
         set -eu
-
         CONFIG_JSON="configuration.custom.spacelift.json"
         OUT_JSON="module_versions.custom.spacelift.json"
-
-        # Base URL for your Spacelift account
         MODULE_API_BASE="https://app.spacelift.io/registry/modules/v1"
-
-        # Optional auth header if SPACELIFT_API_TOKEN is set (recommended)
         AUTH_HEADER=""
         if [ -n "${SPACELIFT_API_TOKEN:-}" ]; then
           AUTH_HEADER="Authorization: Bearer ${SPACELIFT_API_TOKEN}"
         fi
-
         echo '{}' > "$OUT_JSON"
-
-        # Get unique module sources from the root module
         jq -r '.root_module.module_calls[].source' "$CONFIG_JSON" | sort -u | while read -r SRC; do
-          # Expect sources like spacelift.io/org/name/provider
           NS=$(echo "$SRC" | cut -d'/' -f2)
           NAME=$(echo "$SRC" | cut -d'/' -f3)
           PROVIDER=$(echo "$SRC" | cut -d'/' -f4)
-
-          # Only handle registry-style modules
           if [ -z "$NS" ] || [ -z "$NAME" ] || [ -z "$PROVIDER" ]; then
             echo "Skipping non-registry module source: $SRC" >&2
             continue
           fi
-
           URL="${MODULE_API_BASE}/${NS}/${NAME}/${PROVIDER}/versions"
           echo "Querying latest version for ${SRC} -> ${URL}" >&2
-  
-
           if [ -n "$AUTH_HEADER" ]; then
             RESP=$(curl -sS -H "$AUTH_HEADER" "$URL" || true)
           else
             RESP=$(curl -sS "$URL" || true)
           fi
-
-          # Extract versions and pick latest
-          LATEST=$(echo "$RESP" \
-            | jq -r '.modules[0].versions[].version' \
-            | sort -Vr \
-            | head -n1)
-
-          # If we can't determine a latest version, skip this module
+          LATEST=$(echo "$RESP" | jq -r '.modules[0].versions[].version' | sort -Vr | head -n1)
           if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
             echo "WARN: could not determine latest version for ${SRC}; response: $RESP" >&2
             continue
           fi
-
           echo "Latest version for ${SRC} is ${LATEST}" >&2
-
           tmp="$(mktemp)"
           jq --arg src "$SRC" --arg ver "$LATEST" '. + {($src): $ver}' "$OUT_JSON" > "$tmp"
           mv "$tmp" "$OUT_JSON"
         done
-
-
-
