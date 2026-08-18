@@ -12,7 +12,7 @@
 #       - terraform show -json spacelift.plan | jq -c '.configuration' > configuration.custom.spacelift.json
 
 version: 1
-module_version: 0.0.31
+module_version: 0.0.32
 
 tests:
   - name: consumermodule
